@@ -45,7 +45,8 @@ enum RegImmKind {
 
 struct RegImm {
   enum RegImmKind kind;
-  uint16_t val;
+  int32_t val;
+  const char *label; // 即値がラベルの場合
 };
 
 const char* const reg_names[16] = {
@@ -53,6 +54,12 @@ const char* const reg_names[16] = {
   "iv",   "a",   "b",   "c",
   "d",    "e",   "mem", "bank",
   "addr", "ip",  "sp",  "zr"
+};
+enum RegNames {
+  kRegIR1,  kRegIR2, kRegIR3, kRegFLAG,
+  kRegIV,   kRegA,   kRegB,   kRegC,
+  kRegD,    kRegE,   kRegMEM, kRegBANK,
+  kRegADDR, kRegIP,  kRegSP,  kRegZR
 };
 
 int RegNameToIndex(const char* reg_name) {
@@ -88,6 +95,7 @@ uint8_t FlagNameToBits(const char* flag_name) {
 }
 
 struct Instruction {
+  int ip, len;
   uint8_t op, out;
   uint8_t in, imm8;
   uint16_t imm16;
@@ -100,13 +108,17 @@ enum DataWidth {
 
 struct LabelAddr {
   const char *label;
-  int pc;
+  int ip;
 };
 
 // Back patch type
 enum BPType {
-  BP_ABS16,
+  BP_ABS,
   BP_ABS8,
+  BP_ABS16,
+  BP_IP_REL,
+  BP_IP_REL8,
+  BP_IP_REL16,
 };
 
 struct Backpatch {
@@ -115,12 +127,22 @@ struct Backpatch {
   enum BPType type;
 };
 
-void InitBackpatch(struct Backpatch *bp,
-                   int insn_idx, const char *label, enum BPType type) {
+void InitBackpatch(struct Backpatch *bp, int insn_idx,
+                   const char *label, enum BPType type) {
   bp->insn_idx = insn_idx;
   bp->label = label;
   bp->type = type;
 }
+
+struct Instruction insn[1024];
+int insn_idx = 0;
+int ip = ORIGIN;
+
+struct Backpatch backpatches[128];
+int num_backpatches = 0;
+
+struct LabelAddr labels[128];
+int num_labels = 0;
 
 // i 番目のオペランドを文字列として取得
 char *GetOperand(char *mnemonic, char **operands, int n, int i) {
@@ -137,8 +159,7 @@ int GetOperandReg(char *operand) {
 }
 
 // i 番目のオペランドを RegImm として取得
-struct RegImm GetOperandRegImm(char *operand, struct Backpatch *backpatches,
-                               int *num_backpatches, int insn_idx) {
+struct RegImm GetOperandRegImm(char *operand, enum BPType bp_type) {
   char *prefix = strtok(operand, " \t");
   char *value = strtok(NULL, " \t");
   if (value == NULL) {
@@ -147,7 +168,7 @@ struct RegImm GetOperandRegImm(char *operand, struct Backpatch *backpatches,
   }
 
   int v;
-  struct RegImm ri = {kReg, 0};
+  struct RegImm ri = {kReg, 0, NULL};
   if (prefix == NULL && (v = RegNameToIndex(value)) != -1) {
     ri.val = v;
     return ri;
@@ -173,10 +194,12 @@ struct RegImm GetOperandRegImm(char *operand, struct Backpatch *backpatches,
       fprintf(stderr, "prefix must be given for a label: '%s'\n", value);
       exit(1);
     }
-    InitBackpatch(backpatches + *num_backpatches, insn_idx, strdup(value),
-                  ri.kind == kImm8 ? BP_ABS8 : BP_ABS16);
-    (*num_backpatches)++;
-    ri.val = 0;
+    ri.label = strdup(value);
+    if (bp_type == BP_ABS || bp_type == BP_IP_REL) {
+      bp_type += ri.kind;
+    }
+    InitBackpatch(backpatches + num_backpatches, insn_idx, ri.label, bp_type);
+    num_backpatches++;
   } else if (*endptr) {
     fprintf(stderr, "failed conversion to long: '%s'\n", endptr);
     exit(1);
@@ -196,9 +219,8 @@ struct RegImm GetOperandRegImm(char *operand, struct Backpatch *backpatches,
 
 #define GET_REG(i) GetOperandReg(\
     GetOperand((mnemonic), (operands), (num_opr), (i)))
-#define GET_REGIMM(i) GetOperandRegImm(\
-    GetOperand((mnemonic), (operands), (num_opr), (i)), \
-    (backpatches), &(num_backpatches), (insn_idx))
+#define GET_REGIMM(i, bp_type) GetOperandRegImm(\
+    GetOperand((mnemonic), (operands), (num_opr), (i)), (bp_type))
 
 void SetImm(struct Instruction *insn, enum RegImmKind imm_kind, uint16_t v) {
   if (imm_kind == kImm8) {
@@ -261,25 +283,13 @@ int main(int argc, char **argv) {
   char *mnemonic;
   char *operands[MAX_OPERAND];
 
-  struct Instruction insn[1024];
-  int insn_idx = 0;
-  int pc = ORIGIN;
-
-  struct Backpatch backpatches[128];
-  int num_backpatches = 0;
-
-  struct LabelAddr labels[128];
-  int num_labels = 0;
-
-  memset(insn, 0, sizeof(insn));
-
   while (fgets(line, sizeof(line), stdin) != NULL) {
     strcpy(line0, line);
     int num_opr = SplitOpcode(line, &label, &mnemonic, operands, MAX_OPERAND);
 
     if (label) {
       labels[num_labels].label = strdup(label);
-      labels[num_labels].pc = pc;
+      labels[num_labels].ip = ip;
       num_labels++;
     }
 
@@ -300,8 +310,8 @@ int main(int argc, char **argv) {
     if (strcmp(mnemonic, "add") == 0) {
       insn[insn_idx].op = 0x12;
       insn[insn_idx].out = (flag << 4) | GET_REG(0);
-      struct RegImm in1 = GET_REGIMM(1);
-      struct RegImm in2 = GET_REGIMM(2);
+      struct RegImm in1 = GET_REGIMM(1, BP_ABS);
+      struct RegImm in2 = GET_REGIMM(2, BP_ABS);
       insn_len = SetInput(insn + insn_idx, &in1, &in2);
       if (insn_len == -1) {
         fprintf(stderr, "both literals are imm16: %s\n", line0);
@@ -310,14 +320,46 @@ int main(int argc, char **argv) {
     } else if (strcmp(mnemonic, "mov") == 0) {
       insn[insn_idx].op = 0x00;
       insn[insn_idx].out = (flag << 4) | GET_REG(0);
-      struct RegImm in = GET_REGIMM(1);
+      struct RegImm in = GET_REGIMM(1, BP_ABS);
       insn_len = SetInput(insn + insn_idx, &in, NULL);
+    } else if (strcmp(mnemonic, "jmpa") == 0) {
+      insn[insn_idx].op = 0x00;
+      insn[insn_idx].out = (flag << 4) | kRegIP;
+      struct RegImm in = GET_REGIMM(0, BP_ABS);
+      insn_len = SetInput(insn + insn_idx, &in, NULL);
+    } else if (strcmp(mnemonic, "jmp") == 0) {
+      struct RegImm in1 = {kReg, kRegIP, NULL};
+      struct RegImm in2 = GET_REGIMM(0, BP_IP_REL);
+      if (in2.label) {
+        int i;
+        for (i = 0; i < num_labels; i++) {
+          if (strcmp(in2.label, labels[i].label) == 0) {
+            break;
+          }
+        }
+        if (i == num_labels) {
+          insn[insn_idx].op = 0x12; // 後方への相対ジャンプ
+        } else {
+          insn[insn_idx].op = 0x11; // 前方
+        }
+      } else {
+        if (in2.val >= 0) {
+          insn[insn_idx].op = 0x12; // 後方
+        } else {
+          insn[insn_idx].op = 0x11; // 前方
+          in2.val = -in2.val;
+        }
+      }
+      insn[insn_idx].out = (flag << 4) | kRegIP;
+      insn_len = SetInput(insn + insn_idx, &in1, &in2);
     } else {
       fprintf(stderr, "unknown mnemonic: '%s'\n", mnemonic);
       exit(1);
     }
 
-    pc += insn_len;
+    insn[insn_idx].ip = ip;
+    insn[insn_idx].len = insn_len;
+    ip += insn_len;
     insn_idx++;
   }
 
@@ -330,17 +372,38 @@ int main(int argc, char **argv) {
 
       struct Instruction *target_insn = insn + backpatches[i].insn_idx;
       switch (backpatches[i].type) {
-      case BP_ABS16:
-        target_insn->imm16 = labels[l].pc;
-        break;
       case BP_ABS8:
-        if (labels[l].pc >= 256) {
+        if (labels[l].ip >= 256) {
           fprintf(stderr, "label cannot be fit in imm8: '%s' -> %d\n",
-                  labels[l].label, labels[l].pc);
+                  labels[l].label, labels[l].ip);
           exit(1);
         }
-        target_insn->imm8 = labels[l].pc;
+        target_insn->imm8 = labels[l].ip;
         break;
+      case BP_ABS16:
+        target_insn->imm16 = labels[l].ip;
+        break;
+      case BP_IP_REL8:
+      case BP_IP_REL16: {
+        int ip_base = target_insn->ip + target_insn->len;
+        int ip_diff = labels[l].ip - ip_base;
+        if (ip_diff < 0) {
+          ip_diff = -ip_diff;
+        }
+        if (backpatches[i].type == BP_IP_REL16) {
+          target_insn->imm16 = ip_diff;
+        } else if (ip_diff >= 256) {
+          fprintf(stderr, "ip-diff cannot be fit in imm8: abs('%s' - %d) -> %d\n",
+                  labels[l].label, ip_base, ip_diff);
+          exit(1);
+        } else {
+          target_insn->imm8 = ip_diff;
+        }
+        break;
+      }
+      default:
+        fprintf(stderr, "unknown relocation type: %d\n", backpatches[i].type);
+        exit(1);
       }
       break;
     }
@@ -355,18 +418,15 @@ int main(int argc, char **argv) {
     debug = 1;
   }
 
-  pc = ORIGIN;
   for (int i = 0; i < insn_idx; i++) {
     if (debug) {
-      printf("%08x: ", pc);
+      printf("%08x: ", insn[i].ip);
     }
 
     printf("%02X%02X%c", insn[i].op, insn[i].out, debug ? ' ' : '\n');
     printf("%02X%02X%c", insn[i].in, insn[i].imm8, debug ? ' ' : '\n');
-    pc += 2;
     if ((insn[i].in & 0xf0u) == 0x20 || (insn[i].in & 0x0fu) == 0x02) {
       printf("%04X%c", insn[i].imm16, debug ? ' ' : '\n');
-      pc++;
     }
 
     if (debug) {
