@@ -233,11 +233,11 @@ int SetInput(struct Instruction *insn, struct RegImm *in1, struct RegImm *in2) {
   } else if (in1->kind == kReg && in2->kind != kReg) {
     insn->in = (in1->val << 4) | in2->kind;
     SetImm(insn, in2->kind, in2->val);
-    return in2->kind;
+    return 1 + in2->kind;
   } else if (in1->kind != kReg && in2->kind == kReg) {
     insn->in = (in1->kind << 4) | in2->val;
     SetImm(insn, in1->kind, in1->val);
-    return in1->kind;
+    return 1 + in1->kind;
   } else { // in1, in2 両方が即値
     if (in1->kind == kImm16 && in2->kind == kImm16) {
       return -1;
