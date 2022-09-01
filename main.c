@@ -277,6 +277,28 @@ int SetInput(struct Instruction *insn, struct RegImm *in1, struct RegImm *in2) {
   }
 }
 
+// 前方ジャンプなら 1, 後方ジャンプなら 2 を返す。
+// 前方ジャンプであれば jump_to->val を符号反転する。
+int CalcJumpDirForIPRelImm(struct RegImm *jump_to) {
+  int dir = 1;
+  if (jump_to->label) {
+    int i;
+    for (i = 0; i < num_labels; i++) {
+      if (strcmp(jump_to->label, labels[i].label) == 0) {
+        break;
+      }
+    }
+    if (i == num_labels) {
+      dir = 2;
+    }
+  } else if (jump_to->val >= 0) {
+    dir = 2;
+  } else {
+    jump_to->val = -jump_to->val;
+  }
+  return dir;
+}
+
 int main(int argc, char **argv) {
   char line[256], line0[256];
   char *label;
@@ -330,26 +352,15 @@ int main(int argc, char **argv) {
     } else if (strcmp(mnemonic, "jmp") == 0) {
       struct RegImm in1 = {kReg, kRegIP, NULL};
       struct RegImm in2 = GET_REGIMM(0, BP_IP_REL);
-      if (in2.label) {
-        int i;
-        for (i = 0; i < num_labels; i++) {
-          if (strcmp(in2.label, labels[i].label) == 0) {
-            break;
-          }
-        }
-        if (i == num_labels) {
-          insn[insn_idx].op = 0x12; // 後方への相対ジャンプ
-        } else {
-          insn[insn_idx].op = 0x11; // 前方
-        }
-      } else {
-        if (in2.val >= 0) {
-          insn[insn_idx].op = 0x12; // 後方
-        } else {
-          insn[insn_idx].op = 0x11; // 前方
-          in2.val = -in2.val;
-        }
-      }
+      int dir = CalcJumpDirForIPRelImm(&in2);
+      insn[insn_idx].op = 0x10 + dir;
+      insn[insn_idx].out = (flag << 4) | kRegIP;
+      insn_len = SetInput(insn + insn_idx, &in1, &in2);
+    } else if (strcmp(mnemonic, "call") == 0) {
+      struct RegImm in1 = {kReg, kRegIP, NULL};
+      struct RegImm in2 = GET_REGIMM(0, BP_IP_REL);
+      int dir = CalcJumpDirForIPRelImm(&in2);
+      insn[insn_idx].op = 0xd0 + dir;
       insn[insn_idx].out = (flag << 4) | kRegIP;
       insn_len = SetInput(insn + insn_idx, &in1, &in2);
     } else if (strcmp(mnemonic, "push") == 0) {

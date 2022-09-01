@@ -2,6 +2,9 @@
 
 make
 
+ok=0
+fail=0
+
 function test_stdout() {
   want="$1"
   src="$2"
@@ -10,8 +13,10 @@ function test_stdout() {
   if [ "$want" = "$got" ]
   then
     echo "[  OK  ]: $src -> $got"
+    ok=$((ok + 1))
   else
     echo "[FAILED]: $src -> $got, want $want"
+    fail=$((fail + 1))
   fi
 }
 
@@ -29,3 +34,19 @@ loop:
     jmp.nz byte loop"
 test_stdout "D015" "push a"
 test_stdout "C01C" "pop addr"
+test_stdout "D21D D100 0015 1021" "
+    call byte subr
+subr:
+    mov a, 33"
+
+echo "----"
+echo "PASSED: $ok, FAILED $fail"
+
+if [ $fail -eq 0 ]
+then
+  echo "all tests passed!"
+  exit 0
+else
+  echo "$fail test(s) failed..."
+  exit 1
+fi
