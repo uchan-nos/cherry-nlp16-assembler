@@ -6,30 +6,7 @@
 
 #define MAX_OPERAND 4
 #define ORIGIN 0
-
-// line をニーモニックとオペランドに分割する
-// 戻り値: オペランドの数
-int SplitOpcode(char *line, char **label, char **mnemonic, char **operands, int n) {
-  char *colon = strchr(line, ':');
-  if (colon) {
-    *label = line;
-    *colon = '\0';
-    line = colon + 1;
-  } else {
-    *label = NULL;
-  }
-
-  if ((*mnemonic = strtok(line, " \t\n")) == NULL) {
-    return -1;
-  }
-  for (int i = 0; i < n; ++i) {
-    if ((operands[i] = strtok(NULL, ",\n")) == NULL) {
-      return i;
-    }
-    operands[i] += strspn(operands[i], " \t");
-  }
-  return n;
-}
+#define MAX_TOKEN 8
 
 // 文字列をすべて小文字にする
 void ToLower(char *s) {
@@ -39,15 +16,29 @@ void ToLower(char *s) {
   }
 }
 
-enum RegImmKind {
-  kReg = 0, kImm8 = 1, kImm16 = 2
+enum TokenKind {
+  kTokenInt = 128,
+  kTokenLabel,
+  kTokenByte,
+  kTokenWord,
 };
 
-struct RegImm {
-  enum RegImmKind kind;
-  int32_t val;
-  const char *label; // 即値がラベルの場合
+struct Token {
+  //   0 - 15  : レジスタ名（kRegIR1 - kRegZR）
+  //  32 - 127 : 一文字演算子
+  // 128 - last: TokenKind
+  int kind;
+  char *raw;
+  int len;
+  int val;
 };
+
+void InitToken(struct Token *token, enum TokenKind kind, char *raw, int len, int val) {
+  token->kind = kind;
+  token->raw = raw;
+  token->len = len;
+  token->val = val;
+}
 
 const char* const reg_names[16] = {
   "ir1",  "ir2", "ir3", "flag",
@@ -62,14 +53,106 @@ enum RegNames {
   kRegADDR, kRegIP,  kRegSP,  kRegZR
 };
 
-int RegNameToIndex(const char* reg_name) {
+int RegNameToIndex(const char *name, int n) {
   for (int i = 0; i < 16; i++) {
-    if (strcmp(reg_names[i], reg_name) == 0) {
+    int j;
+    for (j = 0; j < n; j++) {
+      if (reg_names[i][j] != tolower(name[j])) {
+        break;
+      }
+    }
+    if (j == n && reg_names[i][j] == '\0') {
       return i;
     }
   }
   return -1;
 }
+
+struct Operand {
+  int len;
+  struct Token tokens[MAX_TOKEN];
+};
+
+void TokenizeOperand(char *opr_str, struct Operand *dest) {
+  char *p = opr_str;
+
+  for (int i = 0; i < MAX_TOKEN; i++) {
+    p += strspn(p, " \t");
+    if (*p == '\0') {
+      dest->len = i;
+      return;
+    }
+
+    if (isdigit(*p)) {
+      char *endptr;
+      int v = strtol(p, &endptr, 0);
+      InitToken(dest->tokens + i, kTokenInt, p, endptr - p, v);
+      p = endptr;
+    } else if (strchr("+-", *p) != NULL) {
+      InitToken(dest->tokens + i, *p, p, 1, 0);
+      p++;
+    } else if (isalpha(*p)) {
+      char *endptr = p + 1;
+      while (isalnum(*endptr)) {
+        endptr++;
+      }
+      int len = endptr - p;
+      if (len == 4 && strncmp(p, "byte", 4) == 0) {
+        InitToken(dest->tokens + i, kTokenByte, p, 4, 0);
+      } else if (len == 4 && strncmp(p, "word", 4) == 0) {
+        InitToken(dest->tokens + i, kTokenWord, p, 4, 0);
+      } else {
+        int reg_idx = RegNameToIndex(p, len);
+        if (reg_idx < 0) {
+          InitToken(dest->tokens + i, kTokenLabel, p, len, 0);
+        } else {
+          InitToken(dest->tokens + i, reg_idx, p, len, 0);
+        }
+      }
+      p = endptr;
+    } else {
+      fprintf(stderr, "unexpected character: '%c'\n", *p);
+      exit(1);
+    }
+  }
+
+  dest->len = MAX_TOKEN;
+}
+
+// line をニーモニックとオペランドに分割する
+// 戻り値: オペランドの数
+int SplitOpcode(char *line, char **label, char **mnemonic, struct Operand *operands, int n) {
+  char *colon = strchr(line, ':');
+  if (colon) {
+    *label = line;
+    *colon = '\0';
+    line = colon + 1;
+  } else {
+    *label = NULL;
+  }
+
+  if ((*mnemonic = strtok(line, " \t\n")) == NULL) {
+    return -1;
+  }
+  for (int i = 0; i < n; ++i) {
+    char *opr = strtok(NULL, ",\n");
+    if (opr == NULL) {
+      return i;
+    }
+    TokenizeOperand(opr, operands + i);
+  }
+  return n;
+}
+
+enum RegImmKind {
+  kReg = 0, kImm8 = 1, kImm16 = 2
+};
+
+struct RegImm {
+  enum RegImmKind kind;
+  int32_t val;
+  const char *label; // 即値がラベルの場合
+};
 
 uint8_t FlagNameToBits(const char* flag_name) {
   char flag = flag_name[0];
@@ -145,73 +228,82 @@ struct LabelAddr labels[128];
 int num_labels = 0;
 
 // i 番目のオペランドを文字列として取得
-char *GetOperand(char *mnemonic, char **operands, int n, int i) {
+struct Operand *GetOperand(char *mnemonic, struct Operand *operands, int n, int i) {
   if (n <= i) {
     fprintf(stderr, "too few operands for '%s': %d\n", mnemonic, n);
     exit(1);
   }
-  return operands[i];
+  return operands + i;
 }
 
 // i 番目のオペランドをレジスタ番号として取得
-int GetOperandReg(char *operand) {
-  return RegNameToIndex(operand);
+int GetOperandReg(struct Operand *operand) {
+  if (operand->len == 1 && operand->tokens[0].kind < 16) {
+    return operand->tokens[0].kind;
+  }
+  return -1;
 }
 
 // i 番目のオペランドを RegImm として取得
-struct RegImm GetOperandRegImm(char *operand, enum BPType bp_type) {
-  char *prefix = strtok(operand, " \t");
-  char *value = strtok(NULL, " \t");
-  if (value == NULL) {
-    value = prefix;
-    prefix = NULL;
+struct RegImm GetOperandRegImm(struct Operand *operand, int start_token, enum BPType bp_type) {
+  int token_idx = start_token;
+  struct Token *value = operand->tokens + token_idx;
+  struct Token *prefix = NULL;
+  if (value->kind == kTokenByte || value->kind == kTokenWord) {
+    prefix = value;
+    token_idx++;
+    value = operand->tokens + token_idx;
   }
 
-  int v;
+  if (operand->len <= token_idx) {
+    fprintf(stderr, "value must be specified\n");
+    exit(1);
+  } else if (operand->len > token_idx + 1) {
+    struct Token *tk = operand->tokens + token_idx + 1;
+    fprintf(stderr, "too many tokens: '%.*s'\n", tk->len, tk->raw);
+    exit(1);
+  }
+
   struct RegImm ri = {kReg, 0, NULL};
-  if (prefix == NULL && (v = RegNameToIndex(value)) != -1) {
-    ri.val = v;
+  if (prefix == NULL && value->kind < 16) {
+    ri.val = value->kind;
     return ri;
   }
 
-  char *endptr;
-  v = strtol(value, &endptr, 0);
-
   if (prefix) {
-    ToLower(prefix);
-    if (strcmp(prefix, "word") == 0) {
+    if (prefix->kind == kTokenWord) {
       ri.kind = kImm16;
-    } else if (strcmp(prefix, "byte") == 0) {
+    } else if (prefix->kind == kTokenByte) {
       ri.kind = kImm8;
     } else {
-      fprintf(stderr, "unknown prefix: '%s'\n", prefix);
+      fprintf(stderr, "unknown prefix: '%.*s'\n", prefix->len, prefix->raw);
       exit(1);
     }
   }
 
-  if (endptr == value) {
+  if (value->kind == kTokenLabel) {
     if (prefix == NULL) {
-      fprintf(stderr, "prefix must be given for a label: '%s'\n", value);
+      fprintf(stderr, "prefix must be given for a label: '%.*s'\n", value->len, value->raw);
       exit(1);
     }
-    ri.label = strdup(value);
+    ri.label = strndup(value->raw, value->len);
     if (bp_type == BP_ABS || bp_type == BP_IP_REL) {
       bp_type += ri.kind;
     }
     InitBackpatch(backpatches + num_backpatches, insn_idx, ri.label, bp_type);
     num_backpatches++;
-  } else if (*endptr) {
-    fprintf(stderr, "failed conversion to long: '%s'\n", endptr);
-    exit(1);
-  } else { // 正常に整数へ変換できた
-    ri.val = (uint16_t)v;
+  } else if (value->kind == kTokenInt) {
+    ri.val = (uint16_t)value->val;
     if (prefix == NULL) {
-      if (0 <= v && v <= 255) {
+      if (0 <= value->val && value->val <= 255) {
         ri.kind = kImm8;
       } else {
         ri.kind = kImm16;
       }
     }
+  } else {
+    fprintf(stderr, "unexpected token: '%.*s'\n", value->len, value->raw);
+    exit(1);
   }
 
   return ri;
@@ -220,7 +312,7 @@ struct RegImm GetOperandRegImm(char *operand, enum BPType bp_type) {
 #define GET_REG(i) GetOperandReg(\
     GetOperand((mnemonic), (operands), (num_opr), (i)))
 #define GET_REGIMM(i, bp_type) GetOperandRegImm(\
-    GetOperand((mnemonic), (operands), (num_opr), (i)), (bp_type))
+    GetOperand((mnemonic), (operands), (num_opr), (i)), 0, (bp_type))
 
 void SetImm(struct Instruction *insn, enum RegImmKind imm_kind, uint16_t v) {
   if (imm_kind == kImm8) {
@@ -303,7 +395,7 @@ int main(int argc, char **argv) {
   char line[256], line0[256];
   char *label;
   char *mnemonic;
-  char *operands[MAX_OPERAND];
+  struct Operand operands[MAX_OPERAND];
 
   while (fgets(line, sizeof(line), stdin) != NULL) {
     strcpy(line0, line);
@@ -345,17 +437,42 @@ int main(int argc, char **argv) {
       struct RegImm in = GET_REGIMM(1, BP_ABS);
       insn_len = SetInput(insn + insn_idx, &in, NULL);
     } else if (strcmp(mnemonic, "jmpa") == 0) {
+      struct RegImm in = GET_REGIMM(0, BP_ABS);
       insn[insn_idx].op = 0x00;
       insn[insn_idx].out = (flag << 4) | kRegIP;
-      struct RegImm in = GET_REGIMM(0, BP_ABS);
       insn_len = SetInput(insn + insn_idx, &in, NULL);
     } else if (strcmp(mnemonic, "jmp") == 0) {
-      struct RegImm in1 = {kReg, kRegIP, NULL};
-      struct RegImm in2 = GET_REGIMM(0, BP_IP_REL);
-      int dir = CalcJumpDirForIPRelImm(&in2);
-      insn[insn_idx].op = 0x10 + dir;
-      insn[insn_idx].out = (flag << 4) | kRegIP;
-      insn_len = SetInput(insn + insn_idx, &in1, &in2);
+      struct Token *tokens = operands[0].tokens;
+      if (tokens[0].kind == kTokenByte || tokens[0].kind == kTokenWord ||
+          tokens[0].kind == kTokenInt || tokens[0].kind == kTokenLabel) {
+        struct RegImm in1 = {kReg, kRegIP, NULL};
+        struct RegImm in2 = GET_REGIMM(0, BP_IP_REL);
+        int dir = CalcJumpDirForIPRelImm(&in2);
+        insn[insn_idx].op = 0x10 | dir;
+        insn[insn_idx].out = (flag << 4) | kRegIP;
+        insn_len = SetInput(insn + insn_idx, &in1, &in2);
+      } else if (tokens[0].kind < 16) { // レジスタ加算
+        char op;
+        if (tokens[1].kind == '+' || tokens[1].kind == '-') {
+          op = tokens[1].kind;
+        } else {
+          fprintf(stderr, "register-relative addressing needs +/-: '%.*s'\n",
+                  tokens[1].len, tokens[1].raw);
+          exit(1);
+        }
+        struct RegImm in1 = {kReg, tokens[0].kind, NULL};
+        struct RegImm in2 = GetOperandRegImm(operands + 0, 2, BP_ABS);
+        int dir = CalcJumpDirForIPRelImm(&in2);
+        if (in2.label == NULL && op == '-') {
+          dir = 3 - dir;
+        }
+        insn[insn_idx].op = 0x10 | dir;
+        insn[insn_idx].out = (flag << 4) | kRegIP;
+        insn_len = SetInput(insn + insn_idx, &in1, &in2);
+      } else {
+        fprintf(stderr, "unknown jump: %s\n", line0);
+        exit(1);
+      }
     } else if (strcmp(mnemonic, "call") == 0) {
       struct RegImm in1 = {kReg, kRegIP, NULL};
       struct RegImm in2 = GET_REGIMM(0, BP_IP_REL);
