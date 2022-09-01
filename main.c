@@ -307,6 +307,14 @@ int main(int argc, char **argv) {
         fprintf(stderr, "both literals are imm16: %s\n", line0);
         exit(1);
       }
+    } else if (strcmp(mnemonic, "mov") == 0) {
+      insn[insn_idx].op = 0x00;
+      insn[insn_idx].out = (flag << 4) | GET_REG(0);
+      struct RegImm in = GET_REGIMM(1);
+      insn_len = SetInput(insn + insn_idx, &in, NULL);
+    } else {
+      fprintf(stderr, "unknown mnemonic: '%s'\n", mnemonic);
+      exit(1);
     }
 
     pc += insn_len;

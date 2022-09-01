@@ -21,3 +21,4 @@ test_stdout "1215 1605 121C 21D3 CAFE 121E E102" "
     add addr, 0xCAFE, 0xd3
 label1:
     add sp, sp, 2"
+test_stdout "0074 1042" "mov.nz iv, 0x42"
