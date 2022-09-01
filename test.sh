@@ -31,7 +31,7 @@ test_stdout "001D 2000 CAFE" "jmpa 0xCAFE"
 test_stdout "1215 5101 117D D104" "
 loop:
     add a, a, 1
-    jmp.nz byte loop"
+    jmp.nz loop"
 test_stdout "111D 5600" "jmp a - b"
 test_stdout "D015" "push a"
 test_stdout "C01C" "pop addr"

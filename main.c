@@ -283,8 +283,7 @@ struct RegImm GetOperandRegImm(struct Operand *operand, int start_token, enum BP
 
   if (value->kind == kTokenLabel) {
     if (prefix == NULL) {
-      fprintf(stderr, "prefix must be given for a label: '%.*s'\n", value->len, value->raw);
-      exit(1);
+      ri.kind = kImm8;
     }
     ri.label = strndup(value->raw, value->len);
     if (bp_type == BP_ABS || bp_type == BP_IP_REL) {
