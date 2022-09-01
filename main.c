@@ -18,7 +18,9 @@ void ToLower(char *s) {
 
 enum TokenKind {
   kTokenInt = 128,
+  kTokenRelInt,
   kTokenLabel,
+  kTokenRelLabel,
   kTokenByte,
   kTokenWord,
 };
@@ -91,6 +93,22 @@ void TokenizeOperand(char *opr_str, struct Operand *dest) {
     } else if (strchr("+-", *p) != NULL) {
       InitToken(dest->tokens + i, *p, p, 1, 0);
       p++;
+    } else if (p[0] == '@') {
+      char *endptr;
+      if (isdigit(p[1])) {
+        int v = strtol(p + 1, &endptr, 0);
+        InitToken(dest->tokens + i, kTokenRelInt, p + 1, endptr - p - 1, v);
+      } else if (isalpha(p[1])) {
+        endptr = p + 2;
+        while (isalnum(*endptr)) {
+          endptr++;
+        }
+        InitToken(dest->tokens + i, kTokenRelLabel, p + 1, endptr - p - 1, 0);
+      } else {
+        fprintf(stderr, "unexpectec character for relative-int/label: '%c'\n", p[1]);
+        exit(1);
+      }
+      p = endptr;
     } else if (isalpha(*p)) {
       char *endptr = p + 1;
       while (isalnum(*endptr)) {
@@ -150,7 +168,7 @@ enum RegImmKind {
 
 struct RegImm {
   enum RegImmKind kind;
-  int32_t val;
+  int16_t val;
   const char *label; // 即値がラベルの場合
 };
 
@@ -245,7 +263,7 @@ int GetOperandReg(struct Operand *operand) {
 }
 
 // i 番目のオペランドを RegImm として取得
-struct RegImm GetOperandRegImm(struct Operand *operand, int start_token, enum BPType bp_type) {
+struct RegImm GetOperandRegImm(struct Operand *operand, int start_token, uint8_t imm_slot) {
   int token_idx = start_token;
   struct Token *value = operand->tokens + token_idx;
   struct Token *prefix = NULL;
@@ -286,17 +304,41 @@ struct RegImm GetOperandRegImm(struct Operand *operand, int start_token, enum BP
       ri.kind = kImm8;
     }
     ri.label = strndup(value->raw, value->len);
-    if (bp_type == BP_ABS || bp_type == BP_IP_REL) {
-      bp_type += ri.kind;
+    InitBackpatch(backpatches + num_backpatches, insn_idx, ri.label, BP_ABS + ri.kind);
+    num_backpatches++;
+  } else if (value->kind == kTokenRelLabel) {
+    if (prefix == NULL) {
+      ri.kind = kImm8;
     }
-    InitBackpatch(backpatches + num_backpatches, insn_idx, ri.label, bp_type);
+    ri.label = strndup(value->raw, value->len);
+    InitBackpatch(backpatches + num_backpatches, insn_idx, ri.label, BP_IP_REL + ri.kind);
     num_backpatches++;
   } else if (value->kind == kTokenInt) {
-    ri.val = (uint16_t)value->val;
-    if (prefix == NULL) {
-      if (0 <= value->val && value->val <= 255) {
+    ri.val = value->val;
+    if (0 <= ri.val && ri.val < 256) {
+      if (prefix == NULL) {
         ri.kind = kImm8;
-      } else {
+      }
+    } else {
+      ri.kind = kImm16;
+    }
+  } else if (value->kind == kTokenRelInt) {
+    if (imm_slot & kImm8) { // imm8 が使用されているので imm16 を使うしかなく、必ず 3 ワードになる
+      ri.val = value->val - ip - 3;
+      ri.kind = kImm16;
+    } else if (imm_slot & kImm16) { // imm16 が使用されているので必ず 3 ワードになる
+      ri.val = value->val - ip - 3;
+      ri.kind = kImm8;
+    } else if (prefix && prefix->kind == kImm16) { // imm16 が指定されているので必ず 3 ワードになる
+      ri.val = value->val - ip - 3;
+    } else { // imm8 も imm16 も未使用なので、どちらを使うか選択権がある
+      ri.val = value->val - ip - 2;
+      if (0 <= ri.val && ri.val < 256) {
+        if (prefix == NULL) {
+          ri.kind = kImm8;
+        }
+      } else { // imm8 では表せないので imm16 を使う
+        ri.val = value->val - ip - 3;
         ri.kind = kImm16;
       }
     }
@@ -305,13 +347,21 @@ struct RegImm GetOperandRegImm(struct Operand *operand, int start_token, enum BP
     exit(1);
   }
 
+  if (prefix) {
+    if ((prefix->kind == kTokenByte && ri.kind != kImm8) ||
+        (prefix->kind == kTokenWord && ri.kind != kImm16)) {
+      fprintf(stderr, "prefix conflicts with immediate size: '%.*s'\n", prefix->len, prefix->raw);
+      exit(1);
+    }
+  }
+
   return ri;
 }
 
 #define GET_REG(i) GetOperandReg(\
     GetOperand((mnemonic), (operands), (num_opr), (i)))
-#define GET_REGIMM(i, bp_type) GetOperandRegImm(\
-    GetOperand((mnemonic), (operands), (num_opr), (i)), 0, (bp_type))
+#define GET_REGIMM(i, imm_slot) GetOperandRegImm(\
+    GetOperand((mnemonic), (operands), (num_opr), (i)), 0, (imm_slot))
 
 void SetImm(struct Instruction *insn, enum RegImmKind imm_kind, uint16_t v) {
   if (imm_kind == kImm8) {
@@ -423,8 +473,8 @@ int main(int argc, char **argv) {
     if (strcmp(mnemonic, "add") == 0) {
       insn[insn_idx].op = 0x12;
       insn[insn_idx].out = (flag << 4) | GET_REG(0);
-      struct RegImm in1 = GET_REGIMM(1, BP_ABS);
-      struct RegImm in2 = GET_REGIMM(2, BP_ABS);
+      struct RegImm in1 = GET_REGIMM(1, 0);
+      struct RegImm in2 = GET_REGIMM(2, in1.kind);
       insn_len = SetInput(insn + insn_idx, &in1, &in2);
       if (insn_len == -1) {
         fprintf(stderr, "both literals are imm16: %s\n", line0);
@@ -433,19 +483,19 @@ int main(int argc, char **argv) {
     } else if (strcmp(mnemonic, "mov") == 0) {
       insn[insn_idx].op = 0x00;
       insn[insn_idx].out = (flag << 4) | GET_REG(0);
-      struct RegImm in = GET_REGIMM(1, BP_ABS);
-      insn_len = SetInput(insn + insn_idx, &in, NULL);
-    } else if (strcmp(mnemonic, "jmpa") == 0) {
-      struct RegImm in = GET_REGIMM(0, BP_ABS);
-      insn[insn_idx].op = 0x00;
-      insn[insn_idx].out = (flag << 4) | kRegIP;
+      struct RegImm in = GET_REGIMM(1, 0);
       insn_len = SetInput(insn + insn_idx, &in, NULL);
     } else if (strcmp(mnemonic, "jmp") == 0) {
       struct Token *tokens = operands[0].tokens;
-      if (tokens[0].kind == kTokenByte || tokens[0].kind == kTokenWord ||
-          tokens[0].kind == kTokenInt || tokens[0].kind == kTokenLabel) {
+      if (tokens[0].kind == kTokenInt || tokens[0].kind == kTokenLabel) {
+        struct RegImm in = GET_REGIMM(0, 0);
+        insn[insn_idx].op = 0x00;
+        insn[insn_idx].out = (flag << 4) | kRegIP;
+        insn_len = SetInput(insn + insn_idx, &in, NULL);
+      } else if (tokens[0].kind == kTokenByte || tokens[0].kind == kTokenWord ||
+                 tokens[0].kind == kTokenRelInt || tokens[0].kind == kTokenRelLabel) {
         struct RegImm in1 = {kReg, kRegIP, NULL};
-        struct RegImm in2 = GET_REGIMM(0, BP_IP_REL);
+        struct RegImm in2 = GET_REGIMM(0, 0);
         int dir = CalcJumpDirForIPRelImm(&in2);
         insn[insn_idx].op = 0x10 | dir;
         insn[insn_idx].out = (flag << 4) | kRegIP;
@@ -474,7 +524,7 @@ int main(int argc, char **argv) {
       }
     } else if (strcmp(mnemonic, "call") == 0) {
       struct RegImm in1 = {kReg, kRegIP, NULL};
-      struct RegImm in2 = GET_REGIMM(0, BP_IP_REL);
+      struct RegImm in2 = GET_REGIMM(0, 0);
       int dir = CalcJumpDirForIPRelImm(&in2);
       insn[insn_idx].op = 0xd0 + dir;
       insn[insn_idx].out = (flag << 4) | kRegIP;
