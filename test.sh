@@ -27,3 +27,5 @@ test_stdout "1215 5101 117D D104" "
 loop:
     add a, a, 1
     jmp.nz byte loop"
+test_stdout "D015" "push a"
+test_stdout "C01C" "pop addr"

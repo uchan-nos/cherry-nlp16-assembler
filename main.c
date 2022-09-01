@@ -245,7 +245,7 @@ int SetInput(struct Instruction *insn, struct RegImm *in1, struct RegImm *in2) {
     } else {
       insn->in = in1->kind << 4;
       SetImm(insn, in1->kind, in1->val);
-      return in1->kind;
+      return 1 + in1->kind;
     }
   }
 
@@ -352,6 +352,14 @@ int main(int argc, char **argv) {
       }
       insn[insn_idx].out = (flag << 4) | kRegIP;
       insn_len = SetInput(insn + insn_idx, &in1, &in2);
+    } else if (strcmp(mnemonic, "push") == 0) {
+      insn[insn_idx].op = 0xd0;
+      insn[insn_idx].out = (flag << 4) | GET_REG(0);
+      insn_len = 1;
+    } else if (strcmp(mnemonic, "pop") == 0) {
+      insn[insn_idx].op = 0xc0;
+      insn[insn_idx].out = (flag << 4) | GET_REG(0);
+      insn_len = 1;
     } else {
       fprintf(stderr, "unknown mnemonic: '%s'\n", mnemonic);
       exit(1);
@@ -424,8 +432,10 @@ int main(int argc, char **argv) {
     }
 
     printf("%02X%02X%c", insn[i].op, insn[i].out, debug ? ' ' : '\n');
-    printf("%02X%02X%c", insn[i].in, insn[i].imm8, debug ? ' ' : '\n');
-    if ((insn[i].in & 0xf0u) == 0x20 || (insn[i].in & 0x0fu) == 0x02) {
+    if (insn[i].len >= 2) {
+      printf("%02X%02X%c", insn[i].in, insn[i].imm8, debug ? ' ' : '\n');
+    }
+    if (insn[i].len >= 3) {
       printf("%04X%c", insn[i].imm16, debug ? ' ' : '\n');
     }
 
