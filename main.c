@@ -446,7 +446,6 @@ int SetInputForBranch(struct Instruction *ins, struct Operand *addr) {
   if (tokens[0].kind == kTokenInt || tokens[0].kind == kTokenLabel) {
     struct RegImm in = GetOperandRegImm(addr, 0, 0);
     ins->op = 0x00;
-    ins->out = kRegIP;
     return SetInput(ins, &in, NULL);
   }
   if (tokens[0].kind == kTokenByte || tokens[0].kind == kTokenWord ||
@@ -454,7 +453,6 @@ int SetInputForBranch(struct Instruction *ins, struct Operand *addr) {
     struct RegImm in1 = {kReg, kRegIP, NULL};
     struct RegImm in2 = GetOperandRegImm(addr, 0, 0);
     ins->op = 0x10 | CalcJumpDirForIPRelImm(&in2);
-    ins->out = kRegIP;
     return SetInput(ins, &in1, &in2);
   }
   if (tokens[0].kind < 16) { // レジスタ加算
@@ -473,7 +471,6 @@ int SetInputForBranch(struct Instruction *ins, struct Operand *addr) {
       dir = 3 - dir;
     }
     ins->op = 0x10 | dir;
-    ins->out = kRegIP;
     return SetInput(ins, &in1, &in2);
   }
 
@@ -531,15 +528,31 @@ int main(int argc, char **argv) {
         fprintf(stderr, "invalid jump instruction: %s\n", line0);
         exit(1);
       }
-      insn[insn_idx].out |= flag << 4;
+      insn[insn_idx].out = (flag << 4) | kRegIP;
     } else if (strcmp(mnemonic, "call") == 0) {
       insn_len = SetInputForBranch(insn + insn_idx, operands + 0);
       if (insn_len < 0) {
-        fprintf(stderr, "invalid jump instruction: %s\n", line0);
+        fprintf(stderr, "invalid call instruction: %s\n", line0);
         exit(1);
       }
       insn[insn_idx].op |= 0xD0;
-      insn[insn_idx].out |= flag << 4;
+      insn[insn_idx].out = (flag << 4) | kRegIP;
+    } else if (strcmp(mnemonic, "load") == 0) {
+      insn_len = SetInputForBranch(insn + insn_idx, operands + 1);
+      if (insn_len < 0) {
+        fprintf(stderr, "invalid load instruction: %s\n", line0);
+        exit(1);
+      }
+      insn[insn_idx].op = (insn[insn_idx].op & 0x0f) | 0x80;
+      insn[insn_idx].out = (flag << 4) | GET_REG(0);
+    } else if (strcmp(mnemonic, "store") == 0) {
+      insn_len = SetInputForBranch(insn + insn_idx, operands);
+      if (insn_len < 0) {
+        fprintf(stderr, "invalid store instruction: %s\n", line0);
+        exit(1);
+      }
+      insn[insn_idx].op = (insn[insn_idx].op & 0x0f) | 0x90;
+      insn[insn_idx].out = (flag << 4) | GET_REG(1);
     } else if (strcmp(mnemonic, "push") == 0) {
       insn[insn_idx].op = 0xd0;
       insn[insn_idx].out = (flag << 4) | GET_REG(0);

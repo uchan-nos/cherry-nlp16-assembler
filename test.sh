@@ -41,6 +41,8 @@ test_stdout "D21D 5102 0015 1021" "
     call a+byte subr
 subr:
     mov a, 33"
+test_stdout "8015 2000 0123" "load a, 0x123"
+test_stdout "9216 7200 0005" "store c + word 5, b"
 
 echo "----"
 echo "PASSED: $ok, FAILED $fail"
