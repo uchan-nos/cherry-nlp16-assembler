@@ -1,10 +1,18 @@
-    add a, BYTE label1, b
-    add addr, 0x400, 0xd3
-    add.c a, b, c
-    add.nc a, b, c
-    add.v a, b, c
-    add.nv a, b, c
-    add.nop a, b, c
+    mov iv, isr
+    mov a, 10
+    mov b, 0
+sumloop:
+    add b, b, a
+    dec a
+    jmp.nz @sumloop
 
-label1:
-    add sp, sp, 2
+    mov addr, 0x100
+    mov mem, b
+
+fin:
+    jmp @fin
+
+isr:
+    push flag
+    pop flag
+    iret
