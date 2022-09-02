@@ -140,6 +140,12 @@ void TokenizeOperand(char *opr_str, struct Operand *dest) {
 // line をニーモニックとオペランドに分割する
 // 戻り値: オペランドの数
 int SplitOpcode(char *line, char **label, char **mnemonic, struct Operand *operands, int n) {
+  char *comment = strchr(line, '#');
+  if (comment) {
+    *comment = '\0';
+    comment++;
+  }
+
   char *colon = strchr(line, ':');
   if (colon) {
     *label = line;
