@@ -358,10 +358,9 @@ struct RegImm GetOperandRegImm(struct Operand *operand, int start_token, uint8_t
   return ri;
 }
 
-#define GET_REG(i) GetOperandReg(\
-    GetOperand((mnemonic), (operands), (num_opr), (i)))
-#define GET_REGIMM(i, imm_slot) GetOperandRegImm(\
-    GetOperand((mnemonic), (operands), (num_opr), (i)), 0, (imm_slot))
+#define GET_OPR(i) GetOperand((mnemonic), (operands), (num_opr), (i))
+#define GET_REG(i) GetOperandReg(GET_OPR(i))
+#define GET_REGIMM(i, imm_slot) GetOperandRegImm(GET_OPR(i), 0, (imm_slot))
 
 void SetImm(struct Instruction *insn, enum RegImmKind imm_kind, uint16_t v) {
   if (imm_kind == kImm8) {
@@ -477,6 +476,43 @@ int SetInputForBranch(struct Instruction *ins, struct Operand *addr) {
   return -1;
 }
 
+int ProcALUOp1In(uint8_t op, uint8_t flag, struct Operand *opr_out,
+                 struct Operand *opr_in) {
+  insn[insn_idx].op = op;
+  insn[insn_idx].out = (flag << 4) | GetOperandReg(opr_out);
+  struct RegImm in = GetOperandRegImm(opr_in, 0, 0);
+  return SetInput(insn + insn_idx, &in, NULL);
+}
+
+int ProcALUOp2In(uint8_t op, uint8_t flag, struct Operand *opr_out,
+                 struct Operand *opr_in1, struct Operand *opr_in2) {
+  insn[insn_idx].op = op;
+  insn[insn_idx].out = (flag << 4) | GetOperandReg(opr_out);
+  struct RegImm in1 = GetOperandRegImm(opr_in1, 0, 0);
+  struct RegImm in2 = GetOperandRegImm(opr_in2, 0, in1.kind);
+  return SetInput(insn + insn_idx, &in1, &in2);
+}
+
+#define ALU1OPR(op) \
+  do { \
+    insn_len = ProcALUOp1In((op), flag, GET_OPR(0), GET_OPR(0)); \
+  } while (0)
+
+#define ALU2OPR(op) \
+  do { \
+    insn_len = ProcALUOp1In((op), flag, GET_OPR(0), GET_OPR(1)); \
+  } while (0)
+
+#define ALU3OPR(op) \
+  do { \
+    insn_len = ProcALUOp2In((op), flag, GET_OPR(0), GET_OPR(1), GET_OPR(2)); \
+    if (insn_len  == -1) { \
+      \
+      fprintf(stderr, "both literals are imm16: %s\n", line0); \
+      exit(1); \
+    } \
+  } while (0)
+
 int main(int argc, char **argv) {
   char line[256], line0[256];
   char *label;
@@ -508,15 +544,41 @@ int main(int argc, char **argv) {
 
     int insn_len = 2;
     if (strcmp(mnemonic, "add") == 0) {
-      insn[insn_idx].op = 0x12;
-      insn[insn_idx].out = (flag << 4) | GET_REG(0);
-      struct RegImm in1 = GET_REGIMM(1, 0);
-      struct RegImm in2 = GET_REGIMM(2, in1.kind);
-      insn_len = SetInput(insn + insn_idx, &in1, &in2);
-      if (insn_len == -1) {
-        fprintf(stderr, "both literals are imm16: %s\n", line0);
-        exit(1);
-      }
+      ALU3OPR(0x12);
+    } else if (strcmp(mnemonic, "sub") == 0) {
+      ALU3OPR(0x11);
+    } else if (strcmp(mnemonic, "addc") == 0) {
+      ALU3OPR(0x16);
+    } else if (strcmp(mnemonic, "subc") == 0) {
+      ALU3OPR(0x15);
+    } else if (strcmp(mnemonic, "or") == 0) {
+      ALU3OPR(0x0a);
+    } else if (strcmp(mnemonic, "not") == 0) {
+      ALU2OPR(0x0c);
+    } else if (strcmp(mnemonic, "xor") == 0) {
+      ALU3OPR(0x0e);
+    } else if (strcmp(mnemonic, "and") == 0) {
+      ALU3OPR(0x06);
+    } else if (strcmp(mnemonic, "inc") == 0) {
+      ALU1OPR(0x1b);
+    } else if (strcmp(mnemonic, "dec") == 0) {
+      ALU1OPR(0x18);
+    } else if (strcmp(mnemonic, "incc") == 0) {
+      ALU1OPR(0x1f);
+    } else if (strcmp(mnemonic, "decc") == 0) {
+      ALU1OPR(0x1c);
+    } else if (strcmp(mnemonic, "slr") == 0) {
+      ALU2OPR(0x2c);
+    } else if (strcmp(mnemonic, "sll") == 0) {
+      ALU2OPR(0x20);
+    } else if (strcmp(mnemonic, "sar") == 0) {
+      ALU2OPR(0x2c);
+    } else if (strcmp(mnemonic, "sal") == 0) {
+      ALU2OPR(0x24);
+    } else if (strcmp(mnemonic, "ror") == 0) {
+      ALU2OPR(0x2a);
+    } else if (strcmp(mnemonic, "rol") == 0) {
+      ALU2OPR(0x22);
     } else if (strcmp(mnemonic, "mov") == 0) {
       insn[insn_idx].op = 0x00;
       insn[insn_idx].out = (flag << 4) | GET_REG(0);
