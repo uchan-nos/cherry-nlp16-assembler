@@ -1,3 +1,4 @@
+    origin 0x10
     mov iv, isr # 割り込みルーチンを設定
     mov a, 10
     mov b, 0
@@ -21,3 +22,9 @@ isr:
     push flag
     pop flag
     iret
+
+    origin 0x200
+msg:
+    dw 0x4865  # H e
+    dw 0x6C6C  # l l
+    dw 0x6F00  # o

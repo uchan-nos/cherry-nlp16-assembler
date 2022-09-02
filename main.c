@@ -648,6 +648,14 @@ int main(int argc, char **argv) {
       insn[insn_idx].op = data >> 8;
       insn[insn_idx].out = data & 0xff;
       insn_len = 1;
+    } else if (strcmp(mnemonic, "origin") == 0) {
+      struct Token *t = operands[0].tokens;
+      if (operands[0].len != 1 || t->kind != kTokenInt) {
+        fprintf(stderr, "origin takes just one integer: %s\n", line0);
+        exit(1);
+      }
+      ip = t->val;
+      continue;
     } else {
       fprintf(stderr, "unknown mnemonic: '%s'\n", mnemonic);
       exit(1);
