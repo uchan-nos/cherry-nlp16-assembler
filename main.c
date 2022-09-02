@@ -598,7 +598,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "invalid call instruction: %s\n", line0);
         exit(1);
       }
-      insn[insn_idx].op |= 0xD0;
+      insn[insn_idx].op |= 0xB0;
       insn[insn_idx].out = (flag << 4) | kRegIP;
     } else if (strcmp(mnemonic, "load") == 0) {
       insn_len = SetInputForBranch(insn + insn_idx, operands + 1);
@@ -750,8 +750,9 @@ int main(int argc, char **argv) {
       case 0x00: printf("mov"); break;
       case 0xd0: printf("push"); break;
       case 0xc0: printf("pop"); break;
-      case 0xd2: printf("call"); break;
-      case 0xd1: printf("call"); break;
+      case 0xb0: printf("call"); break;
+      case 0xb2: printf("call"); break;
+      case 0xb1: printf("call"); break;
       case 0xe0: printf("iret"); break;
       case 0x80: printf("load"); break;
       case 0x82: printf("load"); break;
