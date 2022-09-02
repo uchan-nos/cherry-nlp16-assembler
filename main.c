@@ -440,6 +440,46 @@ int CalcJumpDirForIPRelImm(struct RegImm *jump_to) {
   return dir;
 }
 
+// ins->op の上位 4 ビットは、入力レジスタが 1 個なら 0、2 個なら 1
+int SetInputForBranch(struct Instruction *ins, struct Operand *addr) {
+  struct Token *tokens = addr->tokens;
+  if (tokens[0].kind == kTokenInt || tokens[0].kind == kTokenLabel) {
+    struct RegImm in = GetOperandRegImm(addr, 0, 0);
+    ins->op = 0x00;
+    ins->out = kRegIP;
+    return SetInput(ins, &in, NULL);
+  }
+  if (tokens[0].kind == kTokenByte || tokens[0].kind == kTokenWord ||
+      tokens[0].kind == kTokenRelInt || tokens[0].kind == kTokenRelLabel) {
+    struct RegImm in1 = {kReg, kRegIP, NULL};
+    struct RegImm in2 = GetOperandRegImm(addr, 0, 0);
+    ins->op = 0x10 | CalcJumpDirForIPRelImm(&in2);
+    ins->out = kRegIP;
+    return SetInput(ins, &in1, &in2);
+  }
+  if (tokens[0].kind < 16) { // レジスタ加算
+    char op;
+    if (tokens[1].kind == '+' || tokens[1].kind == '-') {
+      op = tokens[1].kind;
+    } else {
+      fprintf(stderr, "register-relative addressing needs +/-: '%.*s'\n",
+              tokens[1].len, tokens[1].raw);
+      exit(1);
+    }
+    struct RegImm in1 = {kReg, tokens[0].kind, NULL};
+    struct RegImm in2 = GetOperandRegImm(addr, 2, 0);
+    int dir = CalcJumpDirForIPRelImm(&in2);
+    if (in2.label == NULL && op == '-') {
+      dir = 3 - dir;
+    }
+    ins->op = 0x10 | dir;
+    ins->out = kRegIP;
+    return SetInput(ins, &in1, &in2);
+  }
+
+  return -1;
+}
+
 int main(int argc, char **argv) {
   char line[256], line0[256];
   char *label;
@@ -486,49 +526,20 @@ int main(int argc, char **argv) {
       struct RegImm in = GET_REGIMM(1, 0);
       insn_len = SetInput(insn + insn_idx, &in, NULL);
     } else if (strcmp(mnemonic, "jmp") == 0) {
-      struct Token *tokens = operands[0].tokens;
-      if (tokens[0].kind == kTokenInt || tokens[0].kind == kTokenLabel) {
-        struct RegImm in = GET_REGIMM(0, 0);
-        insn[insn_idx].op = 0x00;
-        insn[insn_idx].out = (flag << 4) | kRegIP;
-        insn_len = SetInput(insn + insn_idx, &in, NULL);
-      } else if (tokens[0].kind == kTokenByte || tokens[0].kind == kTokenWord ||
-                 tokens[0].kind == kTokenRelInt || tokens[0].kind == kTokenRelLabel) {
-        struct RegImm in1 = {kReg, kRegIP, NULL};
-        struct RegImm in2 = GET_REGIMM(0, 0);
-        int dir = CalcJumpDirForIPRelImm(&in2);
-        insn[insn_idx].op = 0x10 | dir;
-        insn[insn_idx].out = (flag << 4) | kRegIP;
-        insn_len = SetInput(insn + insn_idx, &in1, &in2);
-      } else if (tokens[0].kind < 16) { // レジスタ加算
-        char op;
-        if (tokens[1].kind == '+' || tokens[1].kind == '-') {
-          op = tokens[1].kind;
-        } else {
-          fprintf(stderr, "register-relative addressing needs +/-: '%.*s'\n",
-                  tokens[1].len, tokens[1].raw);
-          exit(1);
-        }
-        struct RegImm in1 = {kReg, tokens[0].kind, NULL};
-        struct RegImm in2 = GetOperandRegImm(operands + 0, 2, BP_ABS);
-        int dir = CalcJumpDirForIPRelImm(&in2);
-        if (in2.label == NULL && op == '-') {
-          dir = 3 - dir;
-        }
-        insn[insn_idx].op = 0x10 | dir;
-        insn[insn_idx].out = (flag << 4) | kRegIP;
-        insn_len = SetInput(insn + insn_idx, &in1, &in2);
-      } else {
-        fprintf(stderr, "unknown jump: %s\n", line0);
+      insn_len = SetInputForBranch(insn + insn_idx, operands + 0);
+      if (insn_len < 0) {
+        fprintf(stderr, "invalid jump instruction: %s\n", line0);
         exit(1);
       }
+      insn[insn_idx].out |= flag << 4;
     } else if (strcmp(mnemonic, "call") == 0) {
-      struct RegImm in1 = {kReg, kRegIP, NULL};
-      struct RegImm in2 = GET_REGIMM(0, 0);
-      int dir = CalcJumpDirForIPRelImm(&in2);
-      insn[insn_idx].op = 0xd0 + dir;
-      insn[insn_idx].out = (flag << 4) | kRegIP;
-      insn_len = SetInput(insn + insn_idx, &in1, &in2);
+      insn_len = SetInputForBranch(insn + insn_idx, operands + 0);
+      if (insn_len < 0) {
+        fprintf(stderr, "invalid jump instruction: %s\n", line0);
+        exit(1);
+      }
+      insn[insn_idx].op |= 0xD0;
+      insn[insn_idx].out |= flag << 4;
     } else if (strcmp(mnemonic, "push") == 0) {
       insn[insn_idx].op = 0xd0;
       insn[insn_idx].out = (flag << 4) | GET_REG(0);
