@@ -561,6 +561,12 @@ int main(int argc, char **argv) {
       insn[insn_idx].op = 0xc0;
       insn[insn_idx].out = (flag << 4) | GET_REG(0);
       insn_len = 1;
+    } else if (strcmp(mnemonic, "cmp") == 0) {
+      insn[insn_idx].op = 0x11;
+      insn[insn_idx].out = (flag << 4) | kRegZR;
+      struct RegImm in1 = GET_REGIMM(0, 0);
+      struct RegImm in2 = GET_REGIMM(1, in1.kind);
+      insn_len = SetInput(insn + insn_idx, &in1, &in2);
     } else {
       fprintf(stderr, "unknown mnemonic: '%s'\n", mnemonic);
       exit(1);

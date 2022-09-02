@@ -43,6 +43,7 @@ subr:
     mov a, 33"
 test_stdout "8015 2000 0123" "load a, 0x123"
 test_stdout "9216 7200 0005" "store c + word 5, b"
+test_stdout "111F A200 0123" "cmp mem, 0x123"
 
 echo "----"
 echo "PASSED: $ok, FAILED $fail"
