@@ -709,9 +709,13 @@ int main(int argc, char **argv) {
     }
   }
 
-  int debug = 0;
-  if (argc > 1 && strcmp(argv[1], "-d") == 0) {
-    debug = 1;
+  int debug = 0, byte = 0;
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "-d") == 0) {
+      debug = 1;
+    } else if (strcmp(argv[i], "-b") == 0) {
+      byte = ' ';
+    }
   }
 
   for (int i = 0; i < insn_idx; i++) {
@@ -719,12 +723,12 @@ int main(int argc, char **argv) {
       printf("%08x: ", insn[i].ip);
     }
 
-    printf("%02X%02X%c", insn[i].op, insn[i].out, debug ? ' ' : '\n');
+    printf("%02X%c%02X%c", insn[i].op, byte, insn[i].out, debug ? ' ' : '\n');
     if (insn[i].len >= 2) {
-      printf("%02X%02X%c", insn[i].in, insn[i].imm8, debug ? ' ' : '\n');
+      printf("%02X%c%02X%c", insn[i].in, byte, insn[i].imm8, debug ? ' ' : '\n');
     }
     if (insn[i].len >= 3) {
-      printf("%04X%c", insn[i].imm16, debug ? ' ' : '\n');
+      printf("%02X%c%02X%c", insn[i].imm16 >> 8, byte, insn[i].imm16 & 0xff, debug ? ' ' : '\n');
     }
 
     if (debug) {
