@@ -3,7 +3,7 @@
     mov b, 0
 sumloop:
     add b, b, a
-    dec a
+    dec a, a
     jmp.nz @sumloop # @ は IP 相対アドレスの記号
 
     mov addr, 0x100

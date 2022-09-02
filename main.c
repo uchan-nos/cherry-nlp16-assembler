@@ -499,11 +499,6 @@ int ProcALUOp2In(uint8_t op, uint8_t flag, struct Operand *opr_out,
   return SetInput(insn + insn_idx, &in1, &in2);
 }
 
-#define ALU1OPR(op) \
-  do { \
-    insn_len = ProcALUOp1In((op), flag, GET_OPR(0), GET_OPR(0)); \
-  } while (0)
-
 #define ALU2OPR(op) \
   do { \
     insn_len = ProcALUOp1In((op), flag, GET_OPR(0), GET_OPR(1)); \
@@ -566,13 +561,13 @@ int main(int argc, char **argv) {
     } else if (strcmp(mnemonic, "and") == 0) {
       ALU3OPR(0x06);
     } else if (strcmp(mnemonic, "inc") == 0) {
-      ALU1OPR(0x1b);
+      ALU2OPR(0x1b);
     } else if (strcmp(mnemonic, "dec") == 0) {
-      ALU1OPR(0x18);
+      ALU2OPR(0x18);
     } else if (strcmp(mnemonic, "incc") == 0) {
-      ALU1OPR(0x1f);
+      ALU2OPR(0x1f);
     } else if (strcmp(mnemonic, "decc") == 0) {
-      ALU1OPR(0x1c);
+      ALU2OPR(0x1c);
     } else if (strcmp(mnemonic, "slr") == 0) {
       ALU2OPR(0x2c);
     } else if (strcmp(mnemonic, "sll") == 0) {
@@ -733,6 +728,38 @@ int main(int argc, char **argv) {
     }
 
     if (debug) {
+      printf(" # ");
+      switch (insn[i].op) {
+      case 0x12: printf("add"); break;
+      case 0x11: printf("sub"); break;
+      case 0x16: printf("addc"); break;
+      case 0x15: printf("subc"); break;
+      case 0x0a: printf("or"); break;
+      case 0x0c: printf("not"); break;
+      case 0x0e: printf("xor"); break;
+      case 0x06: printf("and"); break;
+      case 0x1b: printf("inc"); break;
+      case 0x18: printf("dec"); break;
+      case 0x1f: printf("incc"); break;
+      case 0x1c: printf("decc"); break;
+      case 0x2c: printf("slr"); break;
+      case 0x20: printf("sll"); break;
+      case 0x24: printf("sal"); break;
+      case 0x2a: printf("ror"); break;
+      case 0x22: printf("rol"); break;
+      case 0x00: printf("mov"); break;
+      case 0xd0: printf("push"); break;
+      case 0xc0: printf("pop"); break;
+      case 0xd2: printf("call"); break;
+      case 0xd1: printf("call"); break;
+      case 0xe0: printf("iret"); break;
+      case 0x80: printf("load"); break;
+      case 0x82: printf("load"); break;
+      case 0x81: printf("load"); break;
+      case 0x90: printf("store"); break;
+      case 0x92: printf("store"); break;
+      case 0x91: printf("store"); break;
+      }
       printf("\n");
     }
   }
