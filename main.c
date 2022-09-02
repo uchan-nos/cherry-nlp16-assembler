@@ -637,6 +637,16 @@ int main(int argc, char **argv) {
       insn[insn_idx].op = 0xe0;
       insn[insn_idx].out = (flag << 4) | kRegIP;
       insn_len = 1;
+    } else if (strcmp(mnemonic, "dw") == 0) {
+      struct Token *t = operands[0].tokens;
+      if (operands[0].len != 1 || t->kind != kTokenInt) {
+        fprintf(stderr, "dw takes just one integer: %s\n", line0);
+        exit(1);
+      }
+      uint16_t data = t->val;
+      insn[insn_idx].op = data >> 8;
+      insn[insn_idx].out = data & 0xff;
+      insn_len = 1;
     } else {
       fprintf(stderr, "unknown mnemonic: '%s'\n", mnemonic);
       exit(1);

@@ -63,6 +63,7 @@ test_stdout "2C15 1002" "sar a, 2"
 test_stdout "2415 6000" "sal a, b"
 test_stdout "2A16 7000" "ror b, c"
 test_stdout "2216 7000" "rol b, c"
+test_stdout "BEEF" "dw 0xbeef"
 
 echo "----"
 echo "PASSED: $ok, FAILED $fail"
