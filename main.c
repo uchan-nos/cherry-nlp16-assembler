@@ -567,6 +567,14 @@ int main(int argc, char **argv) {
       struct RegImm in1 = GET_REGIMM(0, 0);
       struct RegImm in2 = GET_REGIMM(1, in1.kind);
       insn_len = SetInput(insn + insn_idx, &in1, &in2);
+    } else if (strcmp(mnemonic, "ret") == 0) {
+      insn[insn_idx].op = 0xc0;
+      insn[insn_idx].out = (flag << 4) | kRegIP;
+      insn_len = 1;
+    } else if (strcmp(mnemonic, "iret") == 0) {
+      insn[insn_idx].op = 0xe0;
+      insn[insn_idx].out = (flag << 4) | kRegIP;
+      insn_len = 1;
     } else {
       fprintf(stderr, "unknown mnemonic: '%s'\n", mnemonic);
       exit(1);

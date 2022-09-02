@@ -37,13 +37,15 @@ loop:
 test_stdout "111D 5600" "jmp a - b"
 test_stdout "D015" "push a"
 test_stdout "C01C" "pop addr"
-test_stdout "D21D 5102 0015 1021" "
+test_stdout "D21D 5102 0015 1021 C01D" "
     call a+byte subr
 subr:
-    mov a, 33"
+    mov a, 33
+    ret"
 test_stdout "8015 2000 0123" "load a, 0x123"
 test_stdout "9216 7200 0005" "store c + word 5, b"
 test_stdout "111F A200 0123" "cmp mem, 0x123"
+test_stdout "E01D" "iret"
 
 echo "----"
 echo "PASSED: $ok, FAILED $fail"
