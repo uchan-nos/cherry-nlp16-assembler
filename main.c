@@ -514,6 +514,15 @@ int ProcALUOp2In(uint8_t op, uint8_t flag, struct Operand *opr_out,
     } \
   } while (0)
 
+int DWGetValue(struct Operand *opr) {
+  struct Token *t = opr->tokens;
+  if (opr->len != 1 || t->kind != kTokenInt) {
+    fprintf(stderr, ".dw takes integers: '%.*s'\n", t->len, t->raw);
+    exit(1);
+  }
+  return t->val;
+}
+
 int main(int argc, char **argv) {
   char line[256], line0[256];
   char *label;
@@ -535,7 +544,7 @@ int main(int argc, char **argv) {
     }
     ToLower(mnemonic);
 
-    char *sep = strchr(mnemonic, '.');
+    char *sep = strchr(mnemonic + 1, '.');
     uint8_t flag = 1; // always do
     if (sep) {
       char *flag_name = sep + 1;
@@ -638,20 +647,34 @@ int main(int argc, char **argv) {
       insn[insn_idx].op = 0xe0;
       insn[insn_idx].out = (flag << 4) | kRegIP;
       insn_len = 1;
-    } else if (strcmp(mnemonic, "dw") == 0) {
-      struct Token *t = operands[0].tokens;
-      if (operands[0].len != 1 || t->kind != kTokenInt) {
-        fprintf(stderr, "dw takes just one integer: %s\n", line0);
+    } else if (strcmp(mnemonic, ".dw") == 0) {
+      if (num_opr < 1 || 3 < num_opr) {
+        fprintf(stderr, ".dw takes 1 to 3 integers (words): %s\n", line0);
         exit(1);
       }
-      uint16_t data = t->val;
+      insn[insn_idx].ip = ip;
+      insn[insn_idx].len = num_opr;
+      ip += num_opr;
+
+      uint16_t data = DWGetValue(operands + 0);
       insn[insn_idx].op = data >> 8;
       insn[insn_idx].out = data & 0xff;
-      insn_len = 1;
-    } else if (strcmp(mnemonic, "origin") == 0) {
+      if (num_opr >= 2) {
+        data = DWGetValue(operands + 1);
+        insn[insn_idx].in = data >> 8;
+        insn[insn_idx].imm8 = data & 0xff;
+      }
+      if (num_opr >= 3) {
+        data = DWGetValue(operands + 2);
+        insn[insn_idx].imm16 = data;
+      }
+
+      insn_idx++;
+      continue;
+    } else if (strcmp(mnemonic, ".origin") == 0) {
       struct Token *t = operands[0].tokens;
       if (operands[0].len != 1 || t->kind != kTokenInt) {
-        fprintf(stderr, "origin takes just one integer: %s\n", line0);
+        fprintf(stderr, ".origin takes just one integer: %s\n", line0);
         exit(1);
       }
       ip = t->val;
