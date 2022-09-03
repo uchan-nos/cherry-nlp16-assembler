@@ -10,6 +10,8 @@ sumloop:
     mov addr, 0x100
     mov mem, b
 
+    call @fib
+
     # プログラムの終わり。halt 命令がないので無限ループ。
 fin:
     jmp @fin
@@ -19,8 +21,17 @@ fin:
 
 isr:
     push flag
+    store b-0x220, a
     pop flag
     iret
+
+fib:
+    add c, a, b
+    ret.s
+    mov e, c # UART 出力
+    mov a, b
+    mov b, c
+    jmp fib
 
     .origin 0x200
 msg:

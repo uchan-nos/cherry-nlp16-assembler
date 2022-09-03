@@ -757,47 +757,72 @@ int main(int argc, char **argv) {
     printf("%02X%c%02X%c", insn[i].op, byte, insn[i].out, debug ? ' ' : '\n');
     if (insn[i].len >= 2) {
       printf("%02X%c%02X%c", insn[i].in, byte, insn[i].imm8, debug ? ' ' : '\n');
+    } else if (debug) {
+      printf("  %c   ", byte);
     }
     if (insn[i].len >= 3) {
       printf("%02X%c%02X%c", insn[i].imm16 >> 8, byte, insn[i].imm16 & 0xff, debug ? ' ' : '\n');
+    } else if (debug) {
+      printf("  %c   ", byte);
     }
+
+#define OUT reg_names[insn[i].out & 0xf]
+#define IN1 reg_names[insn[i].in >> 4]
+#define IN2 reg_names[insn[i].in & 0xf]
+#define INSN1(fmt) printf(fmt " %s", OUT)
+#define INSN2(fmt) printf(fmt " %s, %s", OUT, IN1)
+#define INSN3(fmt) printf(fmt " %s, %s, %s", OUT, IN1, IN2)
 
     if (debug) {
       printf(" # ");
       switch (insn[i].op) {
-      case 0x12: printf("add"); break;
-      case 0x11: printf("sub"); break;
-      case 0x16: printf("addc"); break;
-      case 0x15: printf("subc"); break;
-      case 0x0a: printf("or"); break;
-      case 0x0c: printf("not"); break;
-      case 0x0e: printf("xor"); break;
-      case 0x06: printf("and"); break;
-      case 0x1b: printf("inc"); break;
-      case 0x18: printf("dec"); break;
-      case 0x1f: printf("incc"); break;
-      case 0x1c: printf("decc"); break;
-      case 0x2c: printf("slr"); break;
-      case 0x20: printf("sll"); break;
-      case 0x24: printf("sal"); break;
-      case 0x2a: printf("ror"); break;
-      case 0x22: printf("rol"); break;
-      case 0x00: printf("mov"); break;
-      case 0xd0: printf("push"); break;
-      case 0xc0: printf("pop"); break;
-      case 0xb0: printf("call"); break;
-      case 0xb2: printf("call"); break;
-      case 0xb1: printf("call"); break;
+      case 0x12: INSN3("add"); break;
+      case 0x11: INSN3("sub"); break;
+      case 0x16: INSN3("addc"); break;
+      case 0x15: INSN3("subc"); break;
+      case 0x0a: INSN3("or"); break;
+      case 0x0c: INSN2("not"); break;
+      case 0x0e: INSN3("xor"); break;
+      case 0x06: INSN3("and"); break;
+      case 0x1b: INSN2("inc"); break;
+      case 0x18: INSN2("dec"); break;
+      case 0x1f: INSN2("incc"); break;
+      case 0x1c: INSN2("decc"); break;
+      case 0x2c: INSN2("slr"); break;
+      case 0x20: INSN2("sll"); break;
+      case 0x24: INSN2("sal"); break;
+      case 0x2a: INSN2("ror"); break;
+      case 0x22: INSN2("rol"); break;
+      case 0x00: INSN2("mov"); break;
+      case 0xd0: INSN1("push"); break;
+      case 0xc0: INSN1("pop"); break;
+      case 0xb0: printf("call %s", IN1); break;
+      case 0xb1:
+      case 0xb2:
+        printf("call %s%c%s", IN1, insn[i].op == 0xb1 ? '-' : '+', IN2);
+        break;
       case 0xe0: printf("iret"); break;
-      case 0x80: printf("load"); break;
-      case 0x82: printf("load"); break;
-      case 0x81: printf("load"); break;
-      case 0x90: printf("store"); break;
-      case 0x92: printf("store"); break;
-      case 0x91: printf("store"); break;
+      case 0x80: printf("load %s, %s", OUT, IN1); break;
+      case 0x81:
+      case 0x82:
+        printf("load %s, %s%c%s", OUT, IN1, insn[i].op == 0x81 ? '-' : '+', IN2);
+        break;
+      case 0x90: printf("store %s, %s", IN1, OUT); break;
+      case 0x91:
+      case 0x92:
+        printf("store %s%c%s, %s", IN1, insn[i].op == 0x91 ? '-' : '+', IN2, OUT);
+        break;
+      default: printf("?");
       }
       printf("\n");
     }
+
+#undef OUT
+#undef IN1
+#undef IN2
+#undef INSN1
+#undef INSN2
+#undef INSN3
   }
   return 0;
 }
