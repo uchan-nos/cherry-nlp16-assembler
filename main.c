@@ -178,6 +178,12 @@ struct RegImm {
   const char *label; // 即値がラベルの場合
 };
 
+const char *flag_names[16] = {
+  ".nop", "",    ".c", ".nc",
+  ".v",   ".nv", ".z", ".nz",
+  ".s",   ".ns", ".?",  ".?",
+  ".?",   ".?",  ".?",  ".?",
+};
 uint8_t FlagNameToBits(const char* flag_name) {
   char flag = flag_name[0];
   uint8_t mask = 0;
@@ -766,12 +772,13 @@ int main(int argc, char **argv) {
       printf("  %c   ", byte);
     }
 
+#define FLG flag_names[insn[i].out >> 4]
 #define OUT reg_names[insn[i].out & 0xf]
 #define IN1 reg_names[insn[i].in >> 4]
 #define IN2 reg_names[insn[i].in & 0xf]
-#define INSN1(fmt) printf(fmt " %s", OUT)
-#define INSN2(fmt) printf(fmt " %s, %s", OUT, IN1)
-#define INSN3(fmt) printf(fmt " %s, %s, %s", OUT, IN1, IN2)
+#define INSN1(fmt) printf(fmt "%s %s",         FLG, OUT)
+#define INSN2(fmt) printf(fmt "%s %s, %s",     FLG, OUT, IN1)
+#define INSN3(fmt) printf(fmt "%s %s, %s, %s", FLG, OUT, IN1, IN2)
 
     if (debug) {
       printf(" # ");
@@ -796,27 +803,28 @@ int main(int argc, char **argv) {
       case 0x00: INSN2("mov"); break;
       case 0xd0: INSN1("push"); break;
       case 0xc0: INSN1("pop"); break;
-      case 0xb0: printf("call %s", IN1); break;
+      case 0xb0: printf("call%s %s", FLG, IN1); break;
       case 0xb1:
       case 0xb2:
-        printf("call %s%c%s", IN1, insn[i].op == 0xb1 ? '-' : '+', IN2);
+        printf("call%s %s%c%s", FLG, IN1, insn[i].op == 0xb1 ? '-' : '+', IN2);
         break;
-      case 0xe0: printf("iret"); break;
-      case 0x80: printf("load %s, %s", OUT, IN1); break;
+      case 0xe0: printf("iret%s", FLG); break;
+      case 0x80: printf("load%s %s, %s", FLG, OUT, IN1); break;
       case 0x81:
       case 0x82:
-        printf("load %s, %s%c%s", OUT, IN1, insn[i].op == 0x81 ? '-' : '+', IN2);
+        printf("load%s %s, %s%c%s", FLG, OUT, IN1, insn[i].op == 0x81 ? '-' : '+', IN2);
         break;
-      case 0x90: printf("store %s, %s", IN1, OUT); break;
+      case 0x90: printf("store%s %s, %s", FLG, IN1, OUT); break;
       case 0x91:
       case 0x92:
-        printf("store %s%c%s, %s", IN1, insn[i].op == 0x91 ? '-' : '+', IN2, OUT);
+        printf("store%s %s%c%s, %s", FLG, IN1, insn[i].op == 0x91 ? '-' : '+', IN2, OUT);
         break;
       default: printf("?");
       }
       printf("\n");
     }
 
+#undef FLG
 #undef OUT
 #undef IN1
 #undef IN2
