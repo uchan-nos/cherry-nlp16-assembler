@@ -558,6 +558,32 @@ int PutSpace(FILE *out, int n) {
   return n;
 }
 
+enum OutputFormat {
+  kFmtText,
+  kFmtBin,
+};
+
+void DumpWordToBytes(uint8_t *buf, uint16_t word, int little) {
+  if (little) {
+    buf[0] = word & 0xffu;
+    buf[1] = word >> 8;
+  } else {
+    buf[0] = word >> 8;
+    buf[1] = word & 0xffu;
+  }
+}
+
+int DumpInstruction(uint8_t *buf, struct Instruction *ins, int little) {
+  DumpWordToBytes(buf + 0, ins->op << 8 | ins->out, little);
+  if (ins->len >= 2) {
+    DumpWordToBytes(buf + 2, ins->in << 8 | ins->imm8, little);
+  }
+  if (ins->len == 3) {
+    DumpWordToBytes(buf + 4, ins->imm16, little);
+  }
+  return ins->len * 2;
+}
+
 int main(int argc, char **argv) {
   char line[256], line0[256];
   char *label;
@@ -776,6 +802,7 @@ int main(int argc, char **argv) {
   }
 
   int debug = 0, byte = 0, little = 0;
+  enum OutputFormat outfmt = kFmtText;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-d") == 0) {
       debug = 1;
@@ -783,7 +810,26 @@ int main(int argc, char **argv) {
       byte = 1;
     } else if (strcmp(argv[i], "-l") == 0) {
       little = 1;
+    } else if (strcmp(argv[i], "-f") == 0 && i + 1 < argc) {
+      const char *name = argv[++i];
+      if (strcmp(name, "text") == 0) {
+        outfmt = kFmtText;
+      } else if (strcmp(name, "bin") == 0) {
+        outfmt = kFmtBin;
+      } else {
+        fprintf(stderr, "unknown output format: '%s'\n", name);
+        exit(1);
+      }
     }
+  }
+
+  if (outfmt == kFmtBin) {
+    for (int i = 0; i < insn_idx; i++) {
+      uint8_t buf[6];
+      int bytes = DumpInstruction(buf, insn + i, little);
+      fwrite(buf, 1, bytes, stdout);
+    }
+    return 0;
   }
 
   for (int i = 0; i < insn_idx; i++) {
