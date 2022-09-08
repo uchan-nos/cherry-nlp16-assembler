@@ -63,7 +63,7 @@ test_stdout "2C15 6000" "sar a, b"
 test_stdout "2415 6000" "sal a, b"
 test_stdout "2A16 7000" "ror b, c"
 test_stdout "2216 7000" "rol b, c"
-test_stdout "BEEF" "dw 0xbeef"
+test_stdout "BEEF" ".dw 0xbeef"
 test_stdout "1215 E132" "
     add a, sp, 0x32 # sp+0x32 を add に代入
     # コメントは無視
