@@ -803,6 +803,7 @@ int main(int argc, char **argv) {
 
   int debug = 0, byte = 0, little = 0;
   enum OutputFormat outfmt = kFmtText;
+  const char *outfile_name = NULL;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-d") == 0) {
       debug = 1;
@@ -820,6 +821,17 @@ int main(int argc, char **argv) {
         fprintf(stderr, "unknown output format: '%s'\n", name);
         exit(1);
       }
+    } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+      outfile_name = argv[++i];
+    }
+  }
+
+  FILE *outfile = stdout;
+  if (outfile_name) {
+    outfile = fopen(outfile_name, outfmt == kFmtText ? "w" : "wb");
+    if (outfile == NULL) {
+      perror("failed to open output file");
+      return 1;
     }
   }
 
@@ -827,7 +839,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < insn_idx; i++) {
       uint8_t buf[6];
       int bytes = DumpInstruction(buf, insn + i, little);
-      fwrite(buf, 1, bytes, stdout);
+      fwrite(buf, 1, bytes, outfile);
     }
     return 0;
   }
@@ -837,16 +849,16 @@ int main(int argc, char **argv) {
       printf("%08x: ", insn[i].ip);
     }
 
-    DumpWord(stdout, insn[i].op << 8 | insn[i].out, byte, little, debug ? ' ' : '\n');
+    DumpWord(outfile, insn[i].op << 8 | insn[i].out, byte, little, debug ? ' ' : '\n');
     if (insn[i].len >= 2) {
-      DumpWord(stdout, insn[i].in << 8 | insn[i].imm8, byte, little, debug ? ' ' : '\n');
+      DumpWord(outfile, insn[i].in << 8 | insn[i].imm8, byte, little, debug ? ' ' : '\n');
     } else if (debug) {
-      PutSpace(stdout, 5 + byte);
+      PutSpace(outfile, 5 + byte);
     }
     if (insn[i].len >= 3) {
-      DumpWord(stdout, insn[i].imm16, byte, little, debug ? ' ' : '\n');
+      DumpWord(outfile, insn[i].imm16, byte, little, debug ? ' ' : '\n');
     } else if (debug) {
-      PutSpace(stdout, 5 + byte);
+      PutSpace(outfile, 5 + byte);
     }
 
 #define FLG flag_names[insn[i].out >> 4]
