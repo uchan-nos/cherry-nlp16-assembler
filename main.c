@@ -529,6 +529,35 @@ int DWGetValue(struct Operand *opr) {
   return t->val;
 }
 
+int DumpWord(FILE *out, uint16_t word, int byte, int little_endian, int delim) {
+  int n;
+  if (!byte) {
+    n = fprintf(out, "%04X", word);
+  } else {
+    uint8_t first = word >> 8;
+    uint8_t second = word & 0xffu;
+    if (little_endian) {
+      uint8_t tmp = first;
+      first = second;
+      second = tmp;
+    }
+    n = fprintf(out, "%02X %02X", first, second);
+  }
+  if (delim) {
+    n += fprintf(out, "%c", delim);
+  }
+  return n;
+}
+
+int PutSpace(FILE *out, int n) {
+  for (int i = 0; i < n; i++) {
+    if (fputc(' ', out) == EOF) {
+      return EOF;
+    }
+  }
+  return n;
+}
+
 int main(int argc, char **argv) {
   char line[256], line0[256];
   char *label;
@@ -746,12 +775,14 @@ int main(int argc, char **argv) {
     }
   }
 
-  int debug = 0, byte = 0;
+  int debug = 0, byte = 0, little = 0;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-d") == 0) {
       debug = 1;
     } else if (strcmp(argv[i], "-b") == 0) {
-      byte = ' ';
+      byte = 1;
+    } else if (strcmp(argv[i], "-l") == 0) {
+      little = 1;
     }
   }
 
@@ -760,16 +791,16 @@ int main(int argc, char **argv) {
       printf("%08x: ", insn[i].ip);
     }
 
-    printf("%02X%c%02X%c", insn[i].op, byte, insn[i].out, debug ? ' ' : '\n');
+    DumpWord(stdout, insn[i].op << 8 | insn[i].out, byte, little, debug ? ' ' : '\n');
     if (insn[i].len >= 2) {
-      printf("%02X%c%02X%c", insn[i].in, byte, insn[i].imm8, debug ? ' ' : '\n');
+      DumpWord(stdout, insn[i].in << 8 | insn[i].imm8, byte, little, debug ? ' ' : '\n');
     } else if (debug) {
-      printf("  %c   ", byte);
+      PutSpace(stdout, 5 + byte);
     }
     if (insn[i].len >= 3) {
-      printf("%02X%c%02X%c", insn[i].imm16 >> 8, byte, insn[i].imm16 & 0xff, debug ? ' ' : '\n');
+      DumpWord(stdout, insn[i].imm16, byte, little, debug ? ' ' : '\n');
     } else if (debug) {
-      printf("  %c   ", byte);
+      PutSpace(stdout, 5 + byte);
     }
 
 #define FLG flag_names[insn[i].out >> 4]
