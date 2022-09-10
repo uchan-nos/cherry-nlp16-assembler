@@ -451,7 +451,7 @@ int CalcJumpDirForIPRelImm(struct RegImm *jump_to) {
   return dir;
 }
 
-// ins->op の上位 4 ビットは、入力レジスタが 1 個なら 0、2 個なら 1
+// ins->op の下位 4 ビットは、加算モードなら 2、減算モードなら 1
 int SetInputForBranch(struct Instruction *ins, struct Operand *addr) {
   struct Token *tokens = addr->tokens;
   if (tokens[0].kind == kTokenInt || tokens[0].kind == kTokenLabel) {
@@ -463,7 +463,7 @@ int SetInputForBranch(struct Instruction *ins, struct Operand *addr) {
       tokens[0].kind == kTokenRelInt || tokens[0].kind == kTokenRelLabel) {
     struct RegImm in1 = {kReg, kRegIP, NULL};
     struct RegImm in2 = GetOperandRegImm(addr, 0, 0);
-    ins->op = 0x10 | CalcJumpDirForIPRelImm(&in2);
+    ins->op = CalcJumpDirForIPRelImm(&in2);
     return SetInput(ins, &in1, &in2);
   }
   if (tokens[0].kind < 16) { // レジスタ加算
@@ -481,7 +481,7 @@ int SetInputForBranch(struct Instruction *ins, struct Operand *addr) {
     if (in2.label == NULL && op == '-') {
       dir = 3 - dir;
     }
-    ins->op = 0x10 | dir;
+    ins->op = dir;
     return SetInput(ins, &in1, &in2);
   }
 
@@ -661,6 +661,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "invalid jump instruction: %s\n", line0);
         exit(1);
       }
+      insn[insn_idx].op |= (insn[insn_idx].op & 0x0f) ? 0x10 : 0x00;
       insn[insn_idx].out = (flag << 4) | kRegIP;
     } else if (strcmp(mnemonic, "call") == 0) {
       insn_len = SetInputForBranch(insn + insn_idx, operands + 0);
@@ -668,7 +669,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "invalid call instruction: %s\n", line0);
         exit(1);
       }
-      insn[insn_idx].op |= 0xB0;
+      insn[insn_idx].op |= (insn[insn_idx].op & 0x0f) ? 0xB8 : 0xB0;
       insn[insn_idx].out = (flag << 4) | kRegIP;
     } else if (strcmp(mnemonic, "load") == 0) {
       insn_len = SetInputForBranch(insn + insn_idx, operands + 1);
@@ -676,7 +677,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "invalid load instruction: %s\n", line0);
         exit(1);
       }
-      insn[insn_idx].op = (insn[insn_idx].op & 0x0f) | 0x80;
+      insn[insn_idx].op |= (insn[insn_idx].op & 0x0f) ? 0x88 : 0x80;
       insn[insn_idx].out = (flag << 4) | GET_REG(0);
     } else if (strcmp(mnemonic, "store") == 0) {
       insn_len = SetInputForBranch(insn + insn_idx, operands);
@@ -684,7 +685,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "invalid store instruction: %s\n", line0);
         exit(1);
       }
-      insn[insn_idx].op = (insn[insn_idx].op & 0x0f) | 0x90;
+      insn[insn_idx].op |= (insn[insn_idx].op & 0x0f) ? 0x98 : 0x90;
       insn[insn_idx].out = (flag << 4) | GET_REG(1);
     } else if (strcmp(mnemonic, "push") == 0) {
       insn[insn_idx].op = 0xd0;

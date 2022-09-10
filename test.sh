@@ -37,13 +37,14 @@ loop:
 test_stdout "111D 5600" "jmp a - b"
 test_stdout "D015" "push a"
 test_stdout "C01C" "pop addr"
-test_stdout "B21D 5102 0015 1021 C01D" "
+test_stdout "BA1D 5102 0015 1021 C01D" "
     call a+byte subr
 subr:
     mov a, 33
     ret"
 test_stdout "8015 2000 0123" "load a, 0x123"
-test_stdout "9216 7200 0005" "store c + word 5, b"
+test_stdout "8915 D200 0123" "load a, ip-0x123"
+test_stdout "9A16 7200 0005" "store c + word 5, b"
 test_stdout "111F A200 0123" "cmp mem, 0x123"
 test_stdout "E01D" "iret"
 test_stdout "1115 160A" "sub a, 10, b"
