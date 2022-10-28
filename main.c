@@ -639,7 +639,7 @@ int main(int argc, char **argv) {
     } else if (strcmp(mnemonic, "decc") == 0) {
       ALU2OPR(0x1c);
     } else if (strcmp(mnemonic, "slr") == 0) {
-      ALU2OPR(0x2c);
+      ALU2OPR(0x28);
     } else if (strcmp(mnemonic, "sll") == 0) {
       ALU2OPR(0x20);
     } else if (strcmp(mnemonic, "sar") == 0) {
