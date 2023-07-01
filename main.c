@@ -129,7 +129,7 @@ void TokenizeOperand(char *opr_str, struct Operand *dest) {
       }
       p = endptr;
     } else {
-      fprintf(stderr, "unexpected character: '%c'\n", *p);
+      fprintf(stderr, "unexpected character:: '%c'\n", *p);
       exit(1);
     }
   }
@@ -140,7 +140,8 @@ void TokenizeOperand(char *opr_str, struct Operand *dest) {
 // line をニーモニックとオペランドに分割する
 // 戻り値: オペランドの数
 int SplitOpcode(char *line, char **label, char **mnemonic, struct Operand *operands, int n) {
-  char *comment = strchr(line, '#');
+  //char *comment = strchr(line, '#');
+  char *comment = strchr(line, ';');
   if (comment) {
     *comment = '\0';
     comment++;
@@ -201,6 +202,7 @@ uint8_t FlagNameToBits(const char* flag_name) {
   case 'v': return 4u | mask;
   case 'z': return 6u | mask;
   case 's': return 8u | mask;
+  case 'b': return 10u | mask;
   default:
     fprintf(stderr, "unknown flag: '%c'\n", flag);
     exit(1);
@@ -585,7 +587,7 @@ int DumpInstruction(uint8_t *buf, struct Instruction *ins, int little) {
 }
 
 int main(int argc, char **argv) {
-  char line[256], line0[256];
+  char line[500], line0[500];
   char *label;
   char *mnemonic;
   struct Operand operands[MAX_OPERAND];
@@ -639,7 +641,7 @@ int main(int argc, char **argv) {
     } else if (strcmp(mnemonic, "decc") == 0) {
       ALU2OPR(0x1c);
     } else if (strcmp(mnemonic, "slr") == 0) {
-      ALU2OPR(0x28);
+      ALU2OPR(0x2c);
     } else if (strcmp(mnemonic, "sll") == 0) {
       ALU2OPR(0x20);
     } else if (strcmp(mnemonic, "sar") == 0) {
@@ -869,49 +871,84 @@ int main(int argc, char **argv) {
 #define INSN1(fmt) printf(fmt "%s %s",         FLG, OUT)
 #define INSN2(fmt) printf(fmt "%s %s, %s",     FLG, OUT, IN1)
 #define INSN3(fmt) printf(fmt "%s %s, %s, %s", FLG, OUT, IN1, IN2)
-
-    if (debug) {
-      printf(" # ");
-      switch (insn[i].op) {
-      case 0x12: INSN3("add"); break;
-      case 0x11: INSN3("sub"); break;
-      case 0x16: INSN3("addc"); break;
-      case 0x15: INSN3("subc"); break;
-      case 0x0a: INSN3("or"); break;
-      case 0x0c: INSN2("not"); break;
-      case 0x0e: INSN3("xor"); break;
-      case 0x06: INSN3("and"); break;
-      case 0x1b: INSN2("inc"); break;
-      case 0x18: INSN2("dec"); break;
-      case 0x1f: INSN2("incc"); break;
-      case 0x1c: INSN2("decc"); break;
-      case 0x2c: INSN2("slr"); break;
-      case 0x20: INSN2("sll"); break;
-      case 0x24: INSN2("sal"); break;
-      case 0x2a: INSN2("ror"); break;
-      case 0x22: INSN2("rol"); break;
-      case 0x00: INSN2("mov"); break;
-      case 0xd0: INSN1("push"); break;
-      case 0xc0: INSN1("pop"); break;
-      case 0xb0: printf("call%s %s", FLG, IN1); break;
-      case 0xb1:
-      case 0xb2:
-        printf("call%s %s%c%s", FLG, IN1, insn[i].op == 0xb1 ? '-' : '+', IN2);
-        break;
-      case 0xe0: printf("iret%s", FLG); break;
-      case 0x80: printf("load%s %s, %s", FLG, OUT, IN1); break;
-      case 0x81:
-      case 0x82:
-        printf("load%s %s, %s%c%s", FLG, OUT, IN1, insn[i].op == 0x81 ? '-' : '+', IN2);
-        break;
-      case 0x90: printf("store%s %s, %s", FLG, IN1, OUT); break;
-      case 0x91:
-      case 0x92:
-        printf("store%s %s%c%s, %s", FLG, IN1, insn[i].op == 0x91 ? '-' : '+', IN2, OUT);
-        break;
-      default: printf("?");
-      }
+    if(insn[i].op != 0xc0 && //pop
+       insn[i].op != 0xd0 && //push
+       insn[i].op != 0xe0 && //ret
+       debug != 0 &&
+       //insn[i].op != 0xe0 && //iret
+       insn[i].len == 1){
+        char dw_data = insn[i].op<<8 | insn[i].out;
+        #define DWCTRL(data) printf(".dw :%x\t[ \\%c ]\n",data,data);
+        #define DWCHAR(data) printf(".dw :%x\t[  %c ]\n",data,data);
+        switch (dw_data)
+        {
+          case 0x00:DWCTRL('0');break;
+          case 0x01:DWCTRL('?');break;
+          case 0x02:DWCTRL('?');break;
+          case 0x03:DWCTRL('?');break;
+          case 0x04:DWCTRL('?');break;
+          case 0x05:DWCTRL('?');break;
+          case 0x06:DWCTRL('?');break;
+          case 0x07:DWCTRL('a');break;
+          case 0x08:DWCTRL('b');break;
+          case 0x09:DWCTRL('t');break;
+          case 0x0A:DWCTRL('n');break;
+          case 0x0B:DWCTRL('v');break;
+          case 0x0C:DWCTRL('f');break;
+          case 0x0D:DWCTRL('r');break;
+          default:  DWCHAR(dw_data);break;
+        }
+        
+    }
+    else{
+      if (debug) {
+        printf(" ; ");
+        switch (insn[i].op) {
+        case 0x12: INSN3("add"); break;
+        case 0x11: INSN3("sub"); break;
+        case 0x16: INSN3("addc"); break;
+        case 0x15: INSN3("subc"); break;
+        case 0x0a: INSN3("or"); break;
+        case 0x0c: INSN2("not"); break;
+        case 0x0e: INSN3("xor"); break;
+        case 0x06: INSN3("and"); break;
+        case 0x1b: INSN2("inc"); break;
+        case 0x18: INSN2("dec"); break;
+        case 0x1f: INSN2("incc"); break;
+        case 0x1c: INSN2("decc"); break;
+        case 0x2c: INSN2("slr"); break;
+        case 0x20: INSN2("sll"); break;
+        case 0x24: INSN2("sal"); break;
+        case 0x2a: INSN2("ror"); break;
+        case 0x22: INSN2("rol"); break;
+        case 0x00: INSN2("mov"); break;
+        case 0xd0: INSN1("push"); break;
+        case 0xc0: INSN1("pop"); break;
+        case 0xb0: printf("call%s %s", FLG, IN1); break;
+        case 0xb1:
+        case 0xba:
+        case 0xb9:
+          printf("call%s %s%c%s", FLG, IN1, insn[i].op == 0xb1 ? '-' : '+', IN2);
+          break;
+        case 0xe0: printf("iret%s", FLG); break;
+        case 0x80: printf("load%s %s, %s", FLG, OUT, IN1); break;
+        case 0x81:
+        case 0x82:
+        case 0x8a:
+        case 0x89:
+          printf("load%s %s, %s%c%s", FLG, OUT, IN1, insn[i].op == 0x81 ? '-' : '+', IN2);
+          break;
+        case 0x90: printf("store%s %s, %s", FLG, IN1, OUT); break;
+        case 0x91:
+        case 0x92:
+        case 0x9a:
+        case 0x99:
+          printf("store%s %s%c%s, %s", FLG, IN1, insn[i].op == 0x91 ? '-' : '+', IN2, OUT);
+          break;
+        default: printf("?");
+        }
       printf("\n");
+      }
     }
 
 #undef FLG
