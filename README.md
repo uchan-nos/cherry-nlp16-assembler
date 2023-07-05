@@ -1,7 +1,7 @@
 # cherry-nlp16-assembler
 
 ちぇりーたくあんさんの [NLP-16 プロジェクト](https://cherry-takuan.org/article/?id=3)
-用のアセンブラです。NLP は NANA Logic Processor の略で、NAND 素子（74HC00）だけ
+用のアセンブラです。NLP は NAND Logic Processor の略で、NAND 素子（74HC00）だけ
 で 16 ビット CPU を作る壮大なプロジェクトです。
 
 ## ビルド方法
